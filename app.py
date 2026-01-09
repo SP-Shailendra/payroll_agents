@@ -16,27 +16,49 @@ def safe_float(x):
         return 0.0
 
 
+def calculate_total_variable_pay(results):
+    total = 0.0
+    for r in results:
+        for k, v in r["earnings"].items():
+            if k in ["Bonus", "Incentive"]:
+                total += safe_float(v)
+    return total
+
+
 def generate_salary_slip_df(result):
     rows = []
 
+    # Fixed earnings (exclude variable pay)
     for k, v in result["earnings"].items():
-        rows.append({
-            "Type": "Earning",
-            "Component": k,
-            "Amount": safe_float(v)
-        })
+        if k not in ["Bonus", "Incentive"]:
+            rows.append({
+                "Section": "Earnings",
+                "Component": k,
+                "Amount": safe_float(v)
+            })
 
+    # Variable Pay section
+    for k, v in result["earnings"].items():
+        if k in ["Bonus", "Incentive"]:
+            rows.append({
+                "Section": "Variable Pay",
+                "Component": k,
+                "Amount": safe_float(v)
+            })
+
+    # Deductions
     for k, v in result["deductions"].items():
         rows.append({
-            "Type": "Deduction",
+            "Section": "Deductions",
             "Component": k,
             "Amount": safe_float(v)
         })
 
+    # Summary
     rows.extend([
-        {"Type": "Summary", "Component": "Gross Salary", "Amount": safe_float(result["gross_salary"])},
-        {"Type": "Summary", "Component": "Total Deductions", "Amount": safe_float(result["total_deductions"])},
-        {"Type": "Summary", "Component": "Net Salary", "Amount": safe_float(result["net_salary"])},
+        {"Section": "Summary", "Component": "Gross Salary", "Amount": safe_float(result["gross_salary"])},
+        {"Section": "Summary", "Component": "Total Deductions", "Amount": safe_float(result["total_deductions"])},
+        {"Section": "Summary", "Component": "Net Salary", "Amount": safe_float(result["net_salary"])},
     ])
 
     return pd.DataFrame(rows)
@@ -71,14 +93,12 @@ st.sidebar.subheader("📤 Payroll Files")
 
 current_file = st.sidebar.file_uploader(
     "Current Payroll (.csv)",
-    type=["csv"],
-    help="Monthly payroll data"
+    type=["csv"]
 )
 
 historical_file = st.sidebar.file_uploader(
     "Historical Payroll (.csv)",
-    type=["csv"],
-    help="Used for anomaly detection"
+    type=["csv"]
 )
 
 
@@ -114,17 +134,20 @@ if current_file and historical_file:
             results.append(result)
 
         summary_df = pd.DataFrame(results)
+        total_variable_pay = calculate_total_variable_pay(results)
 
         # ==================================================
-        # PAYROLL SUMMARY (COMMON)
+        # PAYROLL RUN SUMMARY
         # ==================================================
         st.subheader("📊 Payroll Run Summary")
 
-        col1, col2, col3, col4 = st.columns(4)
+        col1, col2, col3, col4, col5 = st.columns(5)
+
         col1.metric("Employees", len(summary_df))
         col2.metric("Total Net Pay", f"₹ {summary_df['net_salary'].sum():,.2f}")
-        col3.metric("Validation Issues", summary_df["validation_issues"].apply(len).gt(0).sum())
-        col4.metric("Anomalies", summary_df["anomalies"].apply(len).gt(0).sum())
+        col3.metric("Total Variable Pay", f"₹ {total_variable_pay:,.2f}")
+        col4.metric("Validation Issues", summary_df["validation_issues"].apply(len).gt(0).sum())
+        col5.metric("Anomalies", summary_df["anomalies"].apply(len).gt(0).sum())
 
         # ==================================================
         # FINANCE VIEW
